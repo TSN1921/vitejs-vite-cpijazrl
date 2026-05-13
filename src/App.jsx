@@ -1,4 +1,6 @@
-import { useState } from "react";
+import { db } from "./firebase";
+import { collection, addDoc, getDocs } from "firebase/firestore";
+import { useEffect, useState } from "react";
 
 // --- COMPONENTES DE INTERFACE ---
 const Card = ({ children, borderLeft }) => (
@@ -55,6 +57,23 @@ export default function App() {
   const [notas, setNotas] = useState([]);
   const [form, setForm] = useState({ fornecedor: "", valor: "", vencimento: "" });
 
+  // ✅ CARREGA DADOS DO FIREBASE
+  useEffect(() => {
+    const carregarNotas = async () => {
+      const snapshot = await getDocs(collection(db, "notas"));
+
+      const lista = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+
+      setNotas(lista);
+    };
+
+    carregarNotas();
+  }, []);
+
+  // ✅ CÁLCULO DE PRAZO
   const calcularPrazo = (vencimento) => {
     const hoje = new Date();
     hoje.setHours(0, 0, 0, 0);
@@ -70,22 +89,30 @@ export default function App() {
     return { label: "Em dia", color: "#2a9d8f", border: "#2a9d8f" };
   };
 
-  const adicionarNota = () => {
+  // ✅ SALVAR NOTA NO FIREBASE (CORRIGIDO)
+  const adicionarNota = async () => {
     if (!form.fornecedor || !form.valor || !form.vencimento) return;
 
     const dias = calcularPrazo(form.vencimento);
     const info = getStatusInfo(dias);
 
     const novaNota = {
-      ...form,
-      id: Date.now(),
+      fornecedor: form.fornecedor,
+      valor: form.valor,
+      vencimento: form.vencimento,
       diasRestantes: dias,
       statusLabel: info.label,
       statusColor: info.color,
-      aprovada: dias > 10 // Regra de negócio: aprova automático se for > 10 dias
+      aprovada: dias > 10
     };
 
-    setNotas([novaNota, ...notas]);
+    const docRef = await addDoc(collection(db, "notas"), novaNota);
+
+    setNotas(prev => [
+      { ...novaNota, id: docRef.id },
+      ...prev
+    ]);
+
     setForm({ fornecedor: "", valor: "", vencimento: "" });
   };
 
@@ -95,7 +122,7 @@ export default function App() {
       <div style={{ maxWidth: "800px", margin: "0 auto" }}>
         <h2 style={{ color: "#2d3436", marginBottom: "24px" }}>🚀 Lançamento de Notas</h2>
 
-        {/* Formulário Profissional */}
+        {/* FORMULÁRIO */}
         <section style={{ background: "white", padding: "24px", borderRadius: "12px", boxShadow: "0 2px 10px rgba(0,0,0,0.05)", marginBottom: "32px" }}>
           <div style={{ display: "flex", gap: "16px", marginBottom: "20px" }}>
             <FormGroup label="FORNECEDOR">
@@ -105,6 +132,7 @@ export default function App() {
                 onChange={e => setForm({...form, fornecedor: e.target.value})}
               />
             </FormGroup>
+
             <FormGroup label="VALOR (R$)">
               <Input 
                 type="number" 
@@ -113,6 +141,7 @@ export default function App() {
                 onChange={e => setForm({...form, valor: e.target.value})}
               />
             </FormGroup>
+
             <FormGroup label="DATA DE VENCIMENTO">
               <Input 
                 type="date" 
@@ -121,6 +150,7 @@ export default function App() {
               />
             </FormGroup>
           </div>
+
           <button 
             onClick={adicionarNota}
             style={{ width: "100%", padding: "14px", background: "#4f46e5", color: "white", border: "none", borderRadius: "8px", fontWeight: "bold", cursor: "pointer" }}
@@ -129,27 +159,32 @@ export default function App() {
           </button>
         </section>
 
-        {/* Lista de Notas */}
+        {/* LISTA */}
         <h3 style={{ color: "#636e72", fontSize: "14px", marginBottom: "16px" }}>LANÇAMENTOS RECENTES</h3>
+
         {notas.map(nota => (
           <Card key={nota.id} borderLeft={`6px solid ${nota.statusColor}`}>
             <div>
+
               <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "4px" }}>
                 <strong style={{ fontSize: "18px", color: "#2d3436" }}>{nota.fornecedor}</strong>
                 <Badge color={nota.statusColor}>{nota.statusLabel}</Badge>
               </div>
+
               <div style={{ color: "#636e72", fontSize: "14px" }}>
                 <span>💰 <strong>R$ {Number(nota.valor).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong></span>
                 <span style={{ marginLeft: "15px" }}>📅 Vencimento: {new Date(nota.vencimento).toLocaleDateString('pt-BR')}</span>
               </div>
+
             </div>
 
             <div style={{ textAlign: "right" }}>
-                <p style={{ margin: 0, fontSize: "12px", color: "#b2bec3" }}>Aprovação</p>
-                <strong style={{ color: nota.aprovada ? "#2a9d8f" : "#f4a261" }}>
-                   {nota.aprovada ? "SISTEMA (OK)" : "REQUER GESTOR"}
-                </strong>
+              <p style={{ margin: 0, fontSize: "12px", color: "#b2bec3" }}>Aprovação</p>
+              <strong style={{ color: nota.aprovada ? "#2a9d8f" : "#f4a261" }}>
+                {nota.aprovada ? "SISTEMA (OK)" : "REQUER GESTOR"}
+              </strong>
             </div>
+
           </Card>
         ))}
       </div>
